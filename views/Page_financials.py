@@ -1,23 +1,26 @@
+# ---- IMPORTS ----
+import streamlit as st
+import datetime
+from zoneinfo import ZoneInfo
+from streamlit_javascript import st_javascript
 from functions import *
 from contact import contact_form
-from streamlit_javascript import st_javascript
-from zoneinfo import ZoneInfo
 
+# ---- CONTACT FORM ----
 @st.dialog("Contact Me")
 def show_contact_form():
     contact_form()
 
+# ---- PAGE CONFIG ----
 st.set_page_config(
-    page_title="Financials", # The page title, shown in the browser tab.
-    page_icon=":material/finance:",
-    layout="wide", # How the page content should be laid out.
-    initial_sidebar_state="auto", # How the sidebar should start out.
-    menu_items={ # Configure the menu that appears on the top-right side of this app.
-        "Get help": "https://github.com/LMAPcoder" # The URL this menu item should point to.
-    }
+    page_title="Indian Market Financials",
+    page_icon=":material/currency_rupee:",
+    layout="wide",
+    initial_sidebar_state="auto",
+    menu_items={"Get help": "https://github.com/LMAPcoder"}
 )
 
-# ----LOGO----
+# ---- LOGO ----
 st.html("""
   <style>
     [alt=Logo] {
@@ -28,7 +31,7 @@ st.html("""
   </style>
 """)
 
-# ----TIME ZONE----
+# ---- TIME ZONE ----
 if 'timezone' not in st.session_state:
     timezone = st_javascript("""await (async () => {
                     const userTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
@@ -38,53 +41,117 @@ if 'timezone' not in st.session_state:
         st.stop()
     st.session_state['timezone'] = ZoneInfo(timezone)
 
-# ----SESSION STATE -----
-all_my_widget_keys_to_keep = {
+# ---- SESSION STATE ----
+default_state = {
     'current_time_financials_page': datetime.datetime.now(st.session_state['timezone']).replace(microsecond=0, tzinfo=None),
-    'tickers': "MSFT",
-    'dark_mode': False,
-    'toggle_theme': False,
+    'tickers': "RELIANCE.NS",
     'financial_period': "Annual"
 }
+for k, v in default_state.items():
+    if k not in st.session_state:
+        st.session_state[k] = v
 
-for key in all_my_widget_keys_to_keep:
-    if key not in st.session_state:
-        st.session_state[key] = all_my_widget_keys_to_keep[key]
+# ---- HELPER: DETECT AND FIX INDIAN TICKERS ----
+def detect_market_type(ticker: str):
+    """
+    Detect and return proper Indian market ticker.
+    Adds .NS (NSE) or .BO (BSE) automatically if missing.
+    Also detects Indian indices (NIFTY, BANKNIFTY, etc.).
+    """
+    ticker = ticker.upper().strip()
 
-for key in all_my_widget_keys_to_keep:
-    st.session_state[key] = st.session_state[key]
+    # ---- Indian Indices Map ----
+    indian_indices = {
+        "NIFTY": "^NSEI",
+        "NIFTY50": "^NSEI",
+        "NIFTY NEXT 50": "^NSMIDCP",
+        "NIFTYNEXT50": "^NSMIDCP",
+        "NIFTY MIDCAP 50": "^NSEMDCP50",
+        "NIFTYMIDCAP50": "^NSEMDCP50",
+        "NIFTY MIDCAP 100": "^NSEMDCP100",
+        "NIFTYMIDCAP100": "^NSEMDCP100",
+        "NIFTY SMALLCAP 50": "^NSESMLCP50",
+        "NIFTYSMALLCAP50": "^NSESMLCP50",
+        "NIFTY SMALLCAP 100": "^NSESMLCP100",
+        "NIFTYSMALLCAP100": "^NSESMLCP100",
+        "BANKNIFTY": "^NSEBANK",
+        "FINNIFTY": "^CNXFIN",
+        "NIFTYFIN": "^CNXFIN",
+        "NIFTY FMCG": "^CNXFMCG",
+        "NIFTYFMCG": "^CNXFMCG",
+        "NIFTY IT": "^CNXIT",
+        "NIFTYIT": "^CNXIT",
+        "NIFTY AUTO": "^CNXAUTO",
+        "NIFTYAUTO": "^CNXAUTO",
+        "NIFTY METAL": "^CNXMETAL",
+        "NIFTYMETAL": "^CNXMETAL",
+        "NIFTY PHARMA": "^CNXPHARMA",
+        "NIFTYPHARMA": "^CNXPHARMA",
+        "NIFTY REALTY": "^CNXREALTY",
+        "NIFTYREALTY": "^CNXREALTY",
+        "NIFTY PSU BANK": "^CNXPSUBANK",
+        "NIFTYPSUBANK": "^CNXPSUBANK",
+        "NIFTY ENERGY": "^CNXENERGY",
+        "NIFTYENERGY": "^CNXENERGY",
+        "SENSEX": "^BSESN",
+        "BSESENSEX": "^BSESN",
+        "SENSEX NEXT 50": "^BSESN50",
+        "INDIA VIX": "^INDIAVIX"
+    }
 
+    # Check if it’s an index
+    if ticker in indian_indices:
+        return indian_indices[ticker]
+
+    # Handle stocks with or without suffix
+    if ticker.endswith(".NS") or ticker.endswith(".BO"):
+        return ticker
+
+    # Try NSE first
+    try:
+        info = fetch_info(f"{ticker}.NS")
+        if not isinstance(info, Exception):
+            return f"{ticker}.NS"
+    except:
+        pass
+
+    # Try BSE next
+    try:
+        info = fetch_info(f"{ticker}.BO")
+        if not isinstance(info, Exception):
+            return f"{ticker}.BO"
+    except:
+        pass
+
+    return None
 
 # ---- SIDEBAR ----
 with st.sidebar:
+    st.header("🇮🇳 Indian Stock Market")
 
     TICKERS = st.text_input(
-        label="Securities:",
+        label="Enter stocks or indices (comma-separated):",
+        value=st.session_state['tickers'],
         key='tickers'
     )
 
-    TICKERS = [item.strip() for item in TICKERS.split(",") if item.strip() != ""]
+    raw_tickers = [t.strip().upper() for t in TICKERS.split(",") if t.strip() != ""]
+    raw_tickers = remove_duplicates(raw_tickers)
 
-    TICKERS = remove_duplicates(TICKERS)
-
-    if len(TICKERS) > 10:
-        st.error("Only first 10 tickers are shown")
-        TICKERS = TICKERS[:10]
-
-    _tickers = list()
-    for TICKER in TICKERS:
-        info = fetch_info(TICKER)
-        if isinstance(info, Exception):
-            st.error(info)
-            fetch_info.clear(TICKER)
+    # Apply detection logic
+    detected_tickers = []
+    for t in raw_tickers:
+        fixed = detect_market_type(t)
+        if fixed:
+            detected_tickers.append(fixed)
         else:
-            QUOTE_TYPE = info.get('quoteType', "")
-            if QUOTE_TYPE not in ["EQUITY"]:
-                st.error(f"{TICKER} has an invalid quoteType ({QUOTE_TYPE})")
-            else:
-                _tickers.append(TICKER)
+            st.error(f"❌ Could not identify Indian market ticker for '{t}'")
 
-    TICKERS = _tickers
+    if len(detected_tickers) > 10:
+        st.warning("Only first 10 tickers are processed")
+        detected_tickers = detected_tickers[:10]
+
+    TICKERS = detected_tickers
 
     TIME_PERIOD = st.radio(
         label="Time Period:",
@@ -92,242 +159,66 @@ with st.sidebar:
         key="financial_period"
     )
 
-    st.write("")
-    button = st.button("Refresh data")
-
-    if button:
+    if st.button("🔄 Refresh Data"):
         st.session_state['current_time_financials_page'] = datetime.datetime.now(st.session_state['timezone']).replace(microsecond=0, tzinfo=None)
         fetch_info.clear()
         fetch_balance.clear()
         fetch_income.clear()
         fetch_cash.clear()
-        #st.cache_data.clear()
+        st.success("✅ Data refreshed successfully!")
 
     st.write("Last update:", st.session_state['current_time_financials_page'])
+    st.markdown("---")
 
     st.markdown("Made with ❤️ by Leonardo")
-
-    button = st.button("✉️ Contact Me", key="contact")
-
-    if button:
+    if st.button("✉️ Contact Me", key="contact"):
         show_contact_form()
 
-    # ----CREDIT----
     st.write("")
-    st.write("")
-    col1, col2 = st.columns(2, gap="small")
+    col1, col2 = st.columns(2)
     with col1:
         st.markdown("<p style='text-align: right;'>Powered by:</p>", unsafe_allow_html=True)
     with col2:
         st.image("imgs/logo_yahoo_lightpurple.svg", width=100)
 
-# ---- MAINPAGE ----
-
-st.title("Financials")
+# ---- MAIN PAGE ----
+st.title("📈 Indian Market Financial Dashboard")
 
 if len(TICKERS) == 0:
-    st.header(f"Security: None")
-    st.error("Error found")
+    st.error("Please enter at least one valid NSE/BSE stock or Indian index.")
     st.stop()
 
 if len(TICKERS) == 1:
-
     TICKER = TICKERS[0]
-
     info = fetch_info(TICKER)
 
-    NAME = info.get('shortName', "")
-    st.write(f'{NAME}')
+    if isinstance(info, Exception):
+        st.error(info)
+        fetch_info.clear(TICKER)
+        st.stop()
 
-    bs = fetch_balance(TICKER, tp=TIME_PERIOD) #balance sheet
-    ist = fetch_income(TICKER, tp=TIME_PERIOD) #income statement
-    cf = fetch_cash(TICKER, tp=TIME_PERIOD) #cash flow
+    NAME = info.get('shortName', TICKER)
+    CURRENCY = info.get('financialCurrency', "INR")
 
-    CURRENCY = info.get('financialCurrency', "???")
+    st.subheader(f"{NAME} ({TICKER}) — {CURRENCY}")
 
-    #----CAPITAL STRUCTURE-----
+    bs = fetch_balance(TICKER, tp=TIME_PERIOD)
+    ist = fetch_income(TICKER, tp=TIME_PERIOD)
+    cf = fetch_cash(TICKER, tp=TIME_PERIOD)
 
-    st.header("Capital Structure")
-
+    # ---- CAPITAL STRUCTURE ----
+    st.header("🏗️ Capital Structure")
     if isinstance(bs, Exception):
         st.error(bs)
         fetch_balance.clear(TICKER, tp=TIME_PERIOD)
         st.stop()
+    st.plotly_chart(plot_capital(bs, ticker=TICKER, currency=CURRENCY), use_container_width=True)
 
-    fig = plot_capital(bs, ticker=TICKER, currency=CURRENCY)
-
-    st.plotly_chart(
-        fig,
-        use_container_width=True,
-        # theme=None
-    )
-
-    # ----BALANCE SHEET----
-
-    st.header("Balance Sheet")
-
-    st.write("The balance sheet refers to a financial statement that reports "
-             "a company's assets, liabilities, and shareholder equity at a specific point in time.")
-
-
-    fig = plot_balance(bs[bs.columns[::-1]], ticker=TICKER, currency=CURRENCY)
-
-    st.plotly_chart(fig, use_container_width=True)
-
+    # ---- BALANCE SHEET ----
+    st.header("📘 Balance Sheet")
+    st.plotly_chart(plot_balance(bs[bs.columns[::-1]], ticker=TICKER, currency=CURRENCY), use_container_width=True)
     with st.expander("Show components"):
-
         tab1, tab2, tab3 = st.tabs(["Assets", "Liabilities", "Equity"])
-
         with tab1:
-            fig = plot_assets(bs, ticker=TICKER, currency=CURRENCY)
-            st.plotly_chart(fig, use_container_width=True)
-
-        with tab2:
-            fig = plot_liabilities(bs, ticker=TICKER, currency=CURRENCY)
-            st.plotly_chart(fig, use_container_width=True)
-
-        with tab3:
-            fig = plot_equity(bs, ticker=TICKER, currency=CURRENCY)
-            st.plotly_chart(fig, use_container_width=True)
-
-
-
-    with st.expander("Show data"):
-        st.dataframe(
-            data=bs,
-            hide_index=False
-        )
-
-
-    # ----INCOME STATEMENT----
-
-    st.header("Income Statement")
-
-    st.write("The income statement refers to a financial statement that tracks the "
-             "company's revenue, expenses, gains, and losses during a set period.")
-
-    if isinstance(ist, Exception):
-        st.error(ist)
-        fetch_income.clear(TICKER, tp=TIME_PERIOD)
-        st.stop()
-
-    fig = plot_income(ist, ticker=TICKER, currency=CURRENCY)
-
-    st.plotly_chart(fig, use_container_width=True)
-
-    with st.expander("Ratios"):
-        tab1, tab2, tab3 = st.tabs(
-            ["Net Margin", "Earnings per Share", "Price-to-Earnings Ratio"]
-        )
-
-        with tab1:
-
-            st.write("Net profit margin measures how much net income or profit a company generates"
-                     " as a percentage of its revenue.")
-
-            try:
-                fig = plot_margins(ist, ticker=TICKER)
-                st.plotly_chart(
-                    fig,
-                    use_container_width=True,
-                    #theme=None
-                )
-            except:
-                st.error("The data available is not enough to plot this ratio")
-
-        with tab2:
-
-            st.write("Basic earnings per share (EPS) is a rough measurement of the amount of a "
-                     "company's profit that can be allocated to one share of its common stock.")
-
-            try:
-                fig = plot_eps(TICKER)
-                st.plotly_chart(
-                    fig,
-                    use_container_width=True,
-                    #theme=None
-                )
-            except:
-                st.error("The data available is not enough to plot this ratio")
-
-        with tab3:
-
-            st.write("The price-to-earnings (P/E) ratio measures a company's share price"
-                     " relative to its earnings per share (EPS)")
-
-            try:
-                fig = plot_pe_ratio(TICKER)
-                st.plotly_chart(
-                    fig,
-                    use_container_width=True,
-                    # theme=None
-                )
-            except:
-                st.error("The data available is not enough to plot this ratio")
-
-    with st.expander("Show data"):
-        st.dataframe(
-            data=ist,
-            hide_index=False
-        )
-
-    # ----CASH FLOW----
-
-    st.header("Cash Flow")
-
-    st.write("The cash flow statement provides aggregate data regarding all cash inflows and"
-             " all cash outflows during a given period")
-
-    if isinstance(cf, Exception):
-        st.error(cf)
-        fetch_cash.clear(TICKER, tp=TIME_PERIOD)
-        st.stop()
-
-    fig = plot_cash(cf, ticker=TICKER, currency=CURRENCY)
-
-    st.plotly_chart(fig, use_container_width=True)
-
-    with st.expander("Show data"):
-        st.dataframe(
-            data=cf,
-            hide_index=False
-        )
-
-else:
-
-    # ----CAPITAL STRUCTURE-----
-
-    st.header("Capital Structure")
-
-    fig = plot_capital_multiple(TICKERS, tp=TIME_PERIOD)
-
-    st.plotly_chart(
-        fig,
-        use_container_width=True,
-        # theme=None
-    )
-
-
-    # ----BALANCE SHEET----
-
-    st.header("Balance Sheet")
-
-    fig = plot_balance_multiple(TICKERS, tp=TIME_PERIOD)
-
-    st.plotly_chart(fig, use_container_width=True)
-
-    # ----INCOME STATEMENT----
-
-    st.header("Income Statement")
-
-    fig = plot_income_multiple(TICKERS, tp=TIME_PERIOD)
-
-    st.plotly_chart(fig, use_container_width=True)
-
-    # ----CASH FLOW----
-
-    st.header("Cash Flow")
-
-    fig = plot_cash_multiple(TICKERS, tp=TIME_PERIOD)
-
-    st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(plot_assets(bs, ticker=TICKER, currency=CURRENCY), use_container_width=True)
+        with
