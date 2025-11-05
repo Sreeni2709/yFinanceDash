@@ -67,6 +67,31 @@ INDIAN_INDICES = {
     "INDIA VIX": "^INDIAVIX",
 }
 
+@st.cache_data(ttl=86400)  # cache for 1 day
+def fetch_fno_list():
+    """
+    Fetches all NSE F&O (derivative) stocks from NSE India website.
+    Returns a list of ticker symbols (with .NS suffix).
+    """
+    try:
+        url = "https://archives.nseindia.com/content/fo/fo_underlyinglist.csv"
+        df = pd.read_csv(url)
+        symbols = sorted(df["SYMBOL"].unique())
+        return [f"{s}.NS" for s in symbols]
+    except Exception:
+        # fallback: static snapshot (Aug 2025)
+        fallback_symbols = [
+            "RELIANCE.NS", "TCS.NS", "INFY.NS", "HDFCBANK.NS", "ICICIBANK.NS", "SBIN.NS", "LT.NS",
+            "AXISBANK.NS", "ITC.NS", "BHARTIARTL.NS", "KOTAKBANK.NS", "BAJFINANCE.NS", "ADANIENT.NS",
+            "MARUTI.NS", "HCLTECH.NS", "WIPRO.NS", "HDFCLIFE.NS", "ULTRACEMCO.NS", "SUNPHARMA.NS",
+            "DRREDDY.NS", "NTPC.NS", "TITAN.NS", "POWERGRID.NS", "GRASIM.NS", "ONGC.NS",
+            "TATAMOTORS.NS", "ADANIPORTS.NS", "BPCL.NS", "HINDUNILVR.NS", "BRITANNIA.NS",
+            "COALINDIA.NS", "HEROMOTOCO.NS", "TECHM.NS", "BAJAJFINSV.NS", "CIPLA.NS", "NESTLEIND.NS",
+            "INDUSINDBK.NS", "HINDALCO.NS", "TATASTEEL.NS", "JSWSTEEL.NS", "ADANIGREEN.NS",
+            "ADANIPOWER.NS", "DIVISLAB.NS", "PIDILITIND.NS", "SBILIFE.NS", "BAJAJ-AUTO.NS",
+            "EICHERMOT.NS", "SHREECEM.NS", "UPL.NS", "DMART.NS"
+        ]
+        return fallback_symbols
 
 # -------------------------
 # FETCH FUNCTIONS
