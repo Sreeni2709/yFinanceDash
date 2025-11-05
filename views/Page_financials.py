@@ -1,224 +1,173 @@
 # ---- IMPORTS ----
 import streamlit as st
+import pandas as pd
+import numpy as np
 import datetime
-from zoneinfo import ZoneInfo
-from streamlit_javascript import st_javascript
-from functions import *
-from contact import contact_form
+import yfinance as yf
+import requests
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
+import plotly.colors as pc
 
-# ---- CONTACT FORM ----
-@st.dialog("Contact Me")
-def show_contact_form():
-    contact_form()
-
-# ---- PAGE CONFIG ----
-st.set_page_config(
-    page_title="Indian Market Financials",
-    page_icon=":material/currency_rupee:",
-    layout="wide",
-    initial_sidebar_state="auto",
-    menu_items={"Get help": "https://github.com/LMAPcoder"}
-)
-
-# ---- LOGO ----
-st.html("""
-  <style>
-    [alt=Logo] {
-      height: 3rem;
-      width: auto;
-      padding-left: 1rem;
-    }
-  </style>
-""")
-
-# ---- TIME ZONE ----
-if 'timezone' not in st.session_state:
-    timezone = st_javascript("""await (async () => {
-                    const userTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
-                    return userTimezone
-                    })().then(returnValue => returnValue)""")
-    if isinstance(timezone, int):
-        st.stop()
-    st.session_state['timezone'] = ZoneInfo(timezone)
-
-# ---- SESSION STATE ----
-default_state = {
-    'current_time_financials_page': datetime.datetime.now(st.session_state['timezone']).replace(microsecond=0, tzinfo=None),
-    'tickers': "RELIANCE.NS",
-    'financial_period': "Annual"
-}
-for k, v in default_state.items():
-    if k not in st.session_state:
-        st.session_state[k] = v
-
-# ---- HELPER: DETECT AND FIX INDIAN TICKERS ----
-def detect_market_type(ticker: str):
-    """
-    Detect and return proper Indian market ticker.
-    Adds .NS (NSE) or .BO (BSE) automatically if missing.
-    Also detects Indian indices (NIFTY, BANKNIFTY, etc.).
-    """
-    ticker = ticker.upper().strip()
-
-    # ---- Indian Indices Map ----
-    indian_indices = {
-        "NIFTY": "^NSEI",
-        "NIFTY50": "^NSEI",
-        "NIFTY NEXT 50": "^NSMIDCP",
-        "NIFTYNEXT50": "^NSMIDCP",
-        "NIFTY MIDCAP 50": "^NSEMDCP50",
-        "NIFTYMIDCAP50": "^NSEMDCP50",
-        "NIFTY MIDCAP 100": "^NSEMDCP100",
-        "NIFTYMIDCAP100": "^NSEMDCP100",
-        "NIFTY SMALLCAP 50": "^NSESMLCP50",
-        "NIFTYSMALLCAP50": "^NSESMLCP50",
-        "NIFTY SMALLCAP 100": "^NSESMLCP100",
-        "NIFTYSMALLCAP100": "^NSESMLCP100",
-        "BANKNIFTY": "^NSEBANK",
-        "FINNIFTY": "^CNXFIN",
-        "NIFTYFIN": "^CNXFIN",
-        "NIFTY FMCG": "^CNXFMCG",
-        "NIFTYFMCG": "^CNXFMCG",
-        "NIFTY IT": "^CNXIT",
-        "NIFTYIT": "^CNXIT",
-        "NIFTY AUTO": "^CNXAUTO",
-        "NIFTYAUTO": "^CNXAUTO",
-        "NIFTY METAL": "^CNXMETAL",
-        "NIFTYMETAL": "^CNXMETAL",
-        "NIFTY PHARMA": "^CNXPHARMA",
-        "NIFTYPHARMA": "^CNXPHARMA",
-        "NIFTY REALTY": "^CNXREALTY",
-        "NIFTYREALTY": "^CNXREALTY",
-        "NIFTY PSU BANK": "^CNXPSUBANK",
-        "NIFTYPSUBANK": "^CNXPSUBANK",
-        "NIFTY ENERGY": "^CNXENERGY",
-        "NIFTYENERGY": "^CNXENERGY",
-        "SENSEX": "^BSESN",
-        "BSESENSEX": "^BSESN",
-        "SENSEX NEXT 50": "^BSESN50",
-        "INDIA VIX": "^INDIAVIX"
-    }
-
-    # Check if it’s an index
-    if ticker in indian_indices:
-        return indian_indices[ticker]
-
-    # Handle stocks with or without suffix
-    if ticker.endswith(".NS") or ticker.endswith(".BO"):
-        return ticker
-
-    # Try NSE first
+# ---- STREAMLIT CACHING HELPERS ----
+@st.cache_data(ttl=3600)
+def fetch_info(ticker: str):
+    """Fetch stock or index info from Yahoo Finance"""
     try:
-        info = fetch_info(f"{ticker}.NS")
-        if not isinstance(info, Exception):
-            return f"{ticker}.NS"
-    except:
-        pass
+        ticker = yf.Ticker(ticker)
+        return ticker.info
+    except Exception as e:
+        return e
 
-    # Try BSE next
+
+@st.cache_data(ttl=3600)
+def fetch_history(ticker: str, period="6mo", interval="1d", start=None):
+    """Fetch historical price data"""
     try:
-        info = fetch_info(f"{ticker}.BO")
-        if not isinstance(info, Exception):
-            return f"{ticker}.BO"
-    except:
-        pass
-
-    return None
-
-# ---- SIDEBAR ----
-with st.sidebar:
-    st.header("🇮🇳 Indian Stock Market")
-
-    TICKERS = st.text_input(
-        label="Enter stocks or indices (comma-separated):",
-        value=st.session_state['tickers'],
-        key='tickers'
-    )
-
-    raw_tickers = [t.strip().upper() for t in TICKERS.split(",") if t.strip() != ""]
-    raw_tickers = remove_duplicates(raw_tickers)
-
-    # Apply detection logic
-    detected_tickers = []
-    for t in raw_tickers:
-        fixed = detect_market_type(t)
-        if fixed:
-            detected_tickers.append(fixed)
+        t = yf.Ticker(ticker)
+        if start:
+            return t.history(start=start, interval=interval)
         else:
-            st.error(f"❌ Could not identify Indian market ticker for '{t}'")
+            return t.history(period=period, interval=interval)
+    except Exception as e:
+        return e
 
-    if len(detected_tickers) > 10:
-        st.warning("Only first 10 tickers are processed")
-        detected_tickers = detected_tickers[:10]
 
-    TICKERS = detected_tickers
+@st.cache_data(ttl=3600)
+def fetch_balance(ticker: str, tp="Annual"):
+    """Fetch balance sheet"""
+    try:
+        t = yf.Ticker(ticker)
+        if tp == "Annual":
+            return t.balance_sheet
+        else:
+            return t.quarterly_balance_sheet
+    except Exception as e:
+        return e
 
-    TIME_PERIOD = st.radio(
-        label="Time Period:",
-        options=["Annual", "Quarterly"],
-        key="financial_period"
+
+@st.cache_data(ttl=3600)
+def fetch_income(ticker: str, tp="Annual"):
+    """Fetch income statement"""
+    try:
+        t = yf.Ticker(ticker)
+        if tp == "Annual":
+            return t.income_stmt
+        else:
+            return t.quarterly_income_stmt
+    except Exception as e:
+        return e
+
+
+@st.cache_data(ttl=3600)
+def fetch_cash(ticker: str, tp="Annual"):
+    """Fetch cash flow"""
+    try:
+        t = yf.Ticker(ticker)
+        if tp == "Annual":
+            return t.cashflow
+        else:
+            return t.quarterly_cashflow
+    except Exception as e:
+        return e
+
+
+@st.cache_data(ttl=3600)
+def fetch_table(url: str):
+    """Fetch table from Yahoo Finance HTML page"""
+    try:
+        headers = {"User-Agent": "Mozilla/5.0"}
+        response = requests.get(url, headers=headers, timeout=10)
+        df_list = pd.read_html(response.content)
+        return df_list[0]
+    except Exception as e:
+        return e
+
+
+def remove_duplicates(lst):
+    """Remove duplicates while preserving order"""
+    seen = set()
+    result = []
+    for item in lst:
+        if item not in seen:
+            seen.add(item)
+            result.append(item)
+    return result
+
+
+# ---- INDIAN INDICES ----
+INDIAN_INDICES = {
+    "NIFTY 50": "^NSEI",
+    "SENSEX": "^BSESN",
+    "BANKNIFTY": "^NSEBANK",
+    "FINNIFTY": "^CNXFIN",
+    "NIFTY NEXT 50": "^NSMIDCP",
+    "NIFTY MIDCAP 50": "^NSEMDCP50",
+    "NIFTY MIDCAP 100": "^NSEMDCP100",
+    "NIFTY SMALLCAP 50": "^NSESMLCP50",
+    "NIFTY SMALLCAP 100": "^NSESMLCP100",
+    "NIFTY FMCG": "^CNXFMCG",
+    "NIFTY IT": "^CNXIT",
+    "NIFTY AUTO": "^CNXAUTO",
+    "NIFTY METAL": "^CNXMETAL",
+    "NIFTY PHARMA": "^CNXPHARMA",
+    "NIFTY REALTY": "^CNXREALTY",
+    "NIFTY ENERGY": "^CNXENERGY",
+    "NIFTY PSU BANK": "^CNXPSUBANK",
+    "INDIA VIX": "^INDIAVIX",
+}
+
+# ---- FNO STOCKS ----
+@st.cache_data(ttl=86400)
+def fetch_fno_list():
+    """Fetch NSE F&O stock list from NSE website"""
+    try:
+        url = "https://archives.nseindia.com/content/fo/fo_underlyings.csv"
+        df = pd.read_csv(url)
+        df = df.dropna(subset=["SYMBOL"])
+        symbols = [f"{x}.NS" for x in df["SYMBOL"].tolist()]
+        return symbols
+    except Exception:
+        # Fallback static list (Top 20 F&O)
+        return [
+            "RELIANCE.NS", "TCS.NS", "INFY.NS", "ICICIBANK.NS", "HDFCBANK.NS",
+            "SBIN.NS", "AXISBANK.NS", "LT.NS", "ITC.NS", "BHARTIARTL.NS",
+            "MARUTI.NS", "KOTAKBANK.NS", "HCLTECH.NS", "SUNPHARMA.NS",
+            "ADANIENT.NS", "ADANIPORTS.NS", "TITAN.NS", "ONGC.NS", "WIPRO.NS", "ULTRACEMCO.NS"
+        ]
+
+
+# ---- VISUALIZATION FUNCTIONS ----
+def plot_balance(df, ticker="", currency="INR"):
+    df.columns = pd.to_datetime(df.columns).strftime('%Y')
+    fig = go.Figure()
+    if "Total Assets" in df.index:
+        fig.add_trace(go.Bar(
+            x=df.columns, y=df.loc["Total Assets"], name="Total Assets", marker_color="green"
+        ))
+    if "Total Liabilities Net Minority Interest" in df.index:
+        fig.add_trace(go.Bar(
+            x=df.columns, y=df.loc["Total Liabilities Net Minority Interest"],
+            name="Total Liabilities", marker_color="red"
+        ))
+    if "Stockholders Equity" in df.index:
+        fig.add_trace(go.Bar(
+            x=df.columns, y=df.loc["Stockholders Equity"], name="Equity", marker_color="blue"
+        ))
+    fig.update_layout(
+        barmode="group",
+        title=f"Balance Sheet — {ticker}",
+        yaxis_title=f"Amount ({currency})",
+        xaxis_title="Year",
     )
+    return fig
 
-    if st.button("🔄 Refresh Data"):
-        st.session_state['current_time_financials_page'] = datetime.datetime.now(st.session_state['timezone']).replace(microsecond=0, tzinfo=None)
-        fetch_info.clear()
-        fetch_balance.clear()
-        fetch_income.clear()
-        fetch_cash.clear()
-        st.success("✅ Data refreshed successfully!")
 
-    st.write("Last update:", st.session_state['current_time_financials_page'])
-    st.markdown("---")
-
-    st.markdown("Made with ❤️ by Leonardo")
-    if st.button("✉️ Contact Me", key="contact"):
-        show_contact_form()
-
-    st.write("")
-    col1, col2 = st.columns(2)
-    with col1:
-        st.markdown("<p style='text-align: right;'>Powered by:</p>", unsafe_allow_html=True)
-    with col2:
-        st.image("imgs/logo_yahoo_lightpurple.svg", width=100)
-
-# ---- MAIN PAGE ----
-st.title("📈 Indian Market Financial Dashboard")
-
-if len(TICKERS) == 0:
-    st.error("Please enter at least one valid NSE/BSE stock or Indian index.")
-    st.stop()
-
-if len(TICKERS) == 1:
-    TICKER = TICKERS[0]
-    info = fetch_info(TICKER)
-
-    if isinstance(info, Exception):
-        st.error(info)
-        fetch_info.clear(TICKER)
-        st.stop()
-
-    NAME = info.get('shortName', TICKER)
-    CURRENCY = info.get('financialCurrency', "INR")
-
-    st.subheader(f"{NAME} ({TICKER}) — {CURRENCY}")
-
-    bs = fetch_balance(TICKER, tp=TIME_PERIOD)
-    ist = fetch_income(TICKER, tp=TIME_PERIOD)
-    cf = fetch_cash(TICKER, tp=TIME_PERIOD)
-
-    # ---- CAPITAL STRUCTURE ----
-    st.header("🏗️ Capital Structure")
-    if isinstance(bs, Exception):
-        st.error(bs)
-        fetch_balance.clear(TICKER, tp=TIME_PERIOD)
-        st.stop()
-    st.plotly_chart(plot_capital(bs, ticker=TICKER, currency=CURRENCY), use_container_width=True)
-
-    # ---- BALANCE SHEET ----
-    st.header("📘 Balance Sheet")
-    st.plotly_chart(plot_balance(bs[bs.columns[::-1]], ticker=TICKER, currency=CURRENCY), use_container_width=True)
-    with st.expander("Show components"):
-        tab1, tab2, tab3 = st.tabs(["Assets", "Liabilities", "Equity"])
-        with tab1:
-            st.plotly_chart(plot_assets(bs, ticker=TICKER, currency=CURRENCY), use_container_width=True)
-        with
+def plot_income(df, ticker="", currency="INR"):
+    df.columns = pd.to_datetime(df.columns).strftime('%Y')
+    fig = go.Figure()
+    if "Total Revenue" in df.index:
+        fig.add_trace(go.Bar(
+            x=df.columns, y=df.loc["Total Revenue"], name="Total Revenue", marker_color="green"
+        ))
+    if "Net Income Common Stockholders
