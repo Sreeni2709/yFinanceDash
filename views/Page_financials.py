@@ -166,8 +166,29 @@ def plot_balance(df, ticker="", currency="INR"):
 def plot_income(df, ticker="", currency="INR"):
     df.columns = pd.to_datetime(df.columns).strftime('%Y')
     fig = go.Figure()
+
     if "Total Revenue" in df.index:
         fig.add_trace(go.Bar(
-            x=df.columns, y=df.loc["Total Revenue"], name="Total Revenue", marker_color="green"
+            x=df.columns,
+            y=df.loc["Total Revenue"],
+            name="Total Revenue",
+            marker_color="green"
         ))
-    if "Net Income Common Stockholders
+
+    if "Net Income Common Stockholders" in df.index:
+        fig.add_trace(go.Bar(
+            x=df.columns,
+            y=df.loc["Net Income Common Stockholders"],
+            name="Net Income",
+            marker_color="orange"
+        ))
+
+    fig.update_layout(
+        barmode="group",
+        title=f"Income Statement — {ticker}",
+        yaxis_title=f"Amount ({currency})",
+        xaxis_title="Year",
+    )
+
+    return fig
+
