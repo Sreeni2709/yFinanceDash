@@ -4,7 +4,7 @@ This repository contains the Python code to deploy an interactive stock dashboar
 
 The dashboard is designed for ease of use, allowing users to visualize and analyze financial data with real-time updates.
 
-You can access the live version of the dashboard here: [Interactive Stock Dashboard](https://yfinance-dash.streamlit.app/). Please wake up the app if it is sleeping.
+You can access the live version of the dashboard here: . Please wake up the app if it is sleeping.
 
 ## Features
 
@@ -15,4 +15,4 @@ You can access the live version of the dashboard here: [Interactive Stock Dashbo
 
 ## Video
 
-If you need guidance on how to use the tool, I’ve put together a very amateur YouTube video explaining it: https://youtu.be/O-MtZoPCM88
+If you need guidance on how to use the tool, I’ve put together a very amateur YouTube video explaining it:
